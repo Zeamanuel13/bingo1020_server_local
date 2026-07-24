@@ -21,7 +21,12 @@ app.use(
   })
 );
 app.use(express.json({ limit: '2mb' }));
-app.use(morgan(process.env.NODE_ENV === 'test' ? 'tiny' : 'dev'));
+// Per-request access logging (GET /api/health 200 3ms ...) is opt-in only - a shop
+// running this unattended for a full shift doesn't need every health-check poll
+// spammed to its console/log file. Set HTTP_LOG=true to turn it back on for debugging.
+if (process.env.HTTP_LOG === 'true') {
+  app.use(morgan(process.env.NODE_ENV === 'test' ? 'tiny' : 'dev'));
+}
 
 app.use('/api/health', healthRoutes);
 
