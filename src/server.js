@@ -1,23 +1,8 @@
-const os = require('os');
 const app = require('./app');
 const { connectDb } = require('./config/db');
 const { PORT, DEPLOY_MODE, SHOP_ID, LICENSE_KEY } = require('./config/env');
 const { initLicense } = require('./utils/license');
-
-// Local mode only: printed at startup so whoever's setting up a shop's Admin/Cashier
-// apps can read the LAN address straight off the terminal instead of hunting for it in
-// Windows/macOS network settings. Best-effort - falls back to null if nothing found.
-function getLanIp() {
-  const interfaces = os.networkInterfaces();
-  for (const name of Object.keys(interfaces)) {
-    for (const iface of interfaces[name] || []) {
-      if (iface.family === 'IPv4' && !iface.internal) {
-        return iface.address;
-      }
-    }
-  }
-  return null;
-}
+const { getLanIp } = require('./utils/network');
 
 // Last-resort safety net: this server must stay up through an entire shift even if some
 // unexpected error slips past asyncHandler (e.g. from a timer or driver callback outside
