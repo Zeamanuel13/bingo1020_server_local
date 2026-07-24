@@ -1,0 +1,7 @@
+node_modules/
+.env
+backups/
+*.log
+data/
+superadmin/dist/
+notes.txt
