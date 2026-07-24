@@ -20,6 +20,10 @@ const loginLimiter = rateLimit({
 const loginSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
+  // Which app is logging in - the Admin app sends 'admin', the Cashier app sends
+  // 'cashier'. Enforced server-side (not just a client-side check the app could skip)
+  // so an admin's credentials can't be used to log into the Cashier app or vice versa.
+  expectedRole: z.enum(['admin', 'cashier']).optional(),
 });
 
 // POST /api/auth/login - Admin/Cashier login against the LOCAL DB only. Never touches
@@ -27,7 +31,7 @@ const loginSchema = z.object({
 router.post('/login', loginLimiter, asyncHandler(async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'username and password are required' });
-  const { username, password } = parsed.data;
+  const { username, password, expectedRole } = parsed.data;
 
   const user = await User.findOne({ shopId: SHOP_ID, username, role: { $in: ['admin', 'cashier'] } });
   if (!user) {
@@ -40,6 +44,18 @@ router.post('/login', loginLimiter, asyncHandler(async (req, res) => {
   const match = await bcrypt.compare(password, user.passwordHash);
   if (!match) {
     return res.status(401).json({ error: 'Invalid username or password' });
+  }
+
+  // Checked only after the password's already confirmed correct, so a wrong-app
+  // login attempt with an invalid password still just gets "Invalid username or
+  // password" rather than leaking which role the account actually has.
+  if (expectedRole && user.role !== expectedRole) {
+    return res.status(403).json({
+      error: expectedRole === 'cashier'
+        ? 'This is an Admin account. Please use the Admin app instead.'
+        : 'This is a Cashier account. Please use the Cashier app instead.',
+      code: 'WRONG_ROLE',
+    });
   }
 
   user.lastLoginAt = new Date();
