@@ -31,7 +31,12 @@ async function computeDailySummary(shopId, dateStr) {
   const gameIds = finishedGames.map((g) => g.gameId);
   const gamesPlayed = finishedGames.length;
   const totalRevenue = finishedGames.reduce((sum, g) => sum + g.totalAmount, 0);
-  const totalPrizePaid = finishedGames.reduce((sum, g) => sum + (g.winner ? g.winner.prizeAmount : 0), 0);
+  // Falls back to the old single-winner field for any game finished before this
+  // changed to support multiple winners, so historical summaries stay correct.
+  const totalPrizePaid = finishedGames.reduce((sum, g) => {
+    const winners = (g.winners && g.winners.length) ? g.winners : (g.winner ? [g.winner] : []);
+    return sum + winners.reduce((s, w) => s + w.prizeAmount, 0);
+  }, 0);
 
   let cardsSold = 0;
   let perCashier = [];

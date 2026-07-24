@@ -23,7 +23,10 @@ function toGamePublic(game) {
     status: game.status,
     totalCards: game.totalCards,
     totalAmount: game.totalAmount,
-    winner: game.winner || null,
+    // A game can have multiple simultaneous BINGO winners. Falls back to the old
+    // single-winner field for any game recorded before this changed, so historical
+    // records already saved that way don't lose their winner in the UI.
+    winners: (game.winners && game.winners.length) ? game.winners : (game.winner ? [game.winner] : []),
     voidReason: game.voidReason,
     unverified: game.unverified,
     createdAt: game.createdAt,
@@ -103,7 +106,7 @@ const statusSchema = z.object({
 });
 
 const ALLOWED_TRANSITIONS = {
-  open: ['closed_registration', 'voided'],
+  open: ['closed_registration', 'voided', 'finished'],
   closed_registration: ['finished', 'voided'],
 };
 
@@ -120,6 +123,9 @@ router.patch('/:gameId/status', requireAuth(['admin']), asyncHandler(async (req,
   }
   if (parsed.data.status === 'voided' && !parsed.data.voidReason) {
     return res.status(400).json({ error: 'voidReason is required to void a game' });
+  }
+  if (parsed.data.status === 'finished' && !(game.winners?.length || game.winner)) {
+    return res.status(400).json({ error: 'Declare at least one winner before finishing the game' });
   }
 
   game.status = parsed.data.status;
@@ -190,14 +196,17 @@ router.get('/:gameId/cashier-breakdown', asyncHandler(async (req, res) => {
   })));
 }));
 
-// POST /api/games/:gameId/winner (admin) - {cardNo, prizeAmount}.
-const winnerSchema = z.object({
+// POST /api/games/:gameId/winner (admin) - {cardNo, prizeAmount}. Adds one winner to
+// the game - a bingo game can have several simultaneous winners, so this deliberately
+// does NOT finish the game; the admin finishes explicitly via PATCH /:gameId/status
+// once they're done declaring winners.
+const declareWinnerSchema = z.object({
   cardNo: z.number().int().nonnegative(),
   prizeAmount: z.number().positive(),
 });
 
 router.post('/:gameId/winner', requireAuth(['admin']), asyncHandler(async (req, res) => {
-  const parsed = winnerSchema.safeParse(req.body);
+  const parsed = declareWinnerSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
 
   const game = await Game.findOne({ shopId: req.user.shopId, gameId: req.params.gameId });
@@ -214,18 +223,18 @@ router.post('/:gameId/winner', requireAuth(['admin']), asyncHandler(async (req, 
   if (!card) {
     return res.status(404).json({ error: 'Card is not registered for this game' });
   }
+  if (game.winners.some((w) => w.cardNo === parsed.data.cardNo)) {
+    return res.status(409).json({ error: `Card ${parsed.data.cardNo} has already been declared a winner` });
+  }
 
-  game.status = 'finished';
-  game.finishedAt = new Date();
-  game.winner = {
+  game.winners.push({
     cardNo: parsed.data.cardNo,
     cashierId: card.cashierId,
     prizeAmount: parsed.data.prizeAmount,
     declaredAt: new Date(),
     declaredBy: req.user.id,
-  };
+  });
   await game.save();
-  await touchDailySummaryForFinishedGame(game);
 
   res.json(toGamePublic(game));
 }));

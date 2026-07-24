@@ -25,7 +25,8 @@ const gameSchema = new Schema(
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     totalCards: { type: Number, default: 0 },
     totalAmount: { type: Number, default: 0 },
-    winner: { type: winnerSchema, default: null },
+    winners: { type: [winnerSchema], default: [] }, // a game can have multiple simultaneous BINGO winners
+    winner: { type: winnerSchema, default: null }, // deprecated, kept only so any not-yet-migrated document still parses
     voidReason: { type: String, default: '' },
     unverified: { type: Boolean, default: false }, // created offline by a cashier's fallback path
     startedAt: { type: Date, default: Date.now },
